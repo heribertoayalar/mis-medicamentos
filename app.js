@@ -6,14 +6,90 @@ const app = {
         activeAlarm: null, // Guardamos la info de la toma que está sonando
         audioContext: null,
         audioOscillator: null,
-        currentPhoto: null, // Guardamos temporalmente la foto cargada
-        isEditingMed: false
+        currentPhoto: null,
+        isEditingMed: false,
+        wakeLock: null,
+        heartbeatInterval: null,
+        silentPlayer: null
     },
 
     init: () => {
         app.renderTreatments();
         app.startAlarmEngine();
-        console.log('Mis Medicamentos Iniciado Core');
+        app.requestWakeLock();
+        app.setupSilentHeartbeat();
+
+        if ("Notification" in window) {
+            Notification.requestPermission();
+        }
+
+        console.log('Mis Medicamentos v2.3 - Background Alarms Ready');
+    },
+
+    setupSilentHeartbeat: () => {
+        const updatePill = (active) => {
+            const pill = document.getElementById('alarm-status-pill');
+            const text = document.getElementById('alarm-status-text');
+            if (pill && text) {
+                if (active) {
+                    pill.classList.remove('status-off');
+                    pill.classList.add('status-on');
+                    text.innerText = "Alarmas Activas";
+                } else {
+                    pill.classList.remove('status-on');
+                    pill.classList.add('status-off');
+                    text.innerText = "Alarmas Inactivas";
+                }
+            }
+        };
+
+        if (!app.state.audioContext) {
+            app.state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        const startHeartbeat = () => {
+            if (app.state.heartbeatInterval) return;
+
+            console.log('Iniciando latido silencioso...');
+            updatePill(true);
+
+            app.state.heartbeatInterval = setInterval(() => {
+                const ctx = app.state.audioContext;
+                if (ctx.state === 'suspended') ctx.resume();
+
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                gain.gain.value = 0.001;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.1);
+            }, 25000);
+
+            document.removeEventListener('click', startHeartbeat);
+            document.removeEventListener('touchstart', startHeartbeat);
+        };
+
+        document.addEventListener('click', startHeartbeat);
+        document.addEventListener('touchstart', startHeartbeat);
+    },
+
+    requestWakeLock: async () => {
+        if ('wakeLock' in navigator) {
+            try {
+                app.state.wakeLock = await navigator.wakeLock.request('screen');
+                console.log('Pantalla bloqueada para evitar apagado (Wake Lock)');
+
+                // Re-solicitar si se pierde el foco y vuelve
+                document.addEventListener('visibilitychange', async () => {
+                    if (app.state.wakeLock !== null && document.visibilityState === 'visible') {
+                        app.state.wakeLock = await navigator.wakeLock.request('screen');
+                    }
+                });
+            } catch (err) {
+                console.log('Wake Lock no disponible:', err.message);
+            }
+        }
     },
 
     saveToStorage: () => {
@@ -150,60 +226,71 @@ const app = {
     },
 
     saveMedication: () => {
-        const name = document.getElementById('med-name').value.trim();
-        const startDate = document.getElementById('med-start-date').value;
-        const endDate = document.getElementById('med-end-date').value;
-        const freq = parseInt(document.getElementById('med-frequency').value);
-        const startTime = document.getElementById('med-start-time').value;
-        const dose = document.getElementById('med-dose').value.trim();
-        const sound = document.getElementById('med-sound').value;
+        console.log('Tentativa de guardado de medicamento...');
+        try {
+            const name = document.getElementById('med-name').value.trim();
+            const startDate = document.getElementById('med-start-date').value;
+            const endDate = document.getElementById('med-end-date').value;
+            const freqInput = document.getElementById('med-frequency').value;
+            const freq = parseInt(freqInput);
+            const startTime = document.getElementById('med-start-time').value;
+            const dose = document.getElementById('med-dose').value.trim();
+            const sound = document.getElementById('med-sound').value;
 
-        if (!name || !startDate || !endDate || isNaN(freq) || !startTime) {
-            return alert('Por favor, completa todos los campos (Nombre, Fechas, Horas y Frecuencia).');
-        }
+            console.log('Datos capturados:', { name, startDate, endDate, freq, startTime, dose });
 
-        const treatment = app.state.treatments.find(t => t.id === app.state.currentTreatmentId);
-        if (!treatment) {
-            console.error('Treatment not found', app.state.currentTreatmentId);
-            return alert('Error crítico: No se encuentra el tratamiento actual.');
-        }
-
-        if (!treatment.meds) treatment.meds = [];
-
-        if (app.state.isEditingMed) {
-            const med = treatment.meds.find(m => m.id === app.state.currentMedId);
-            if (med) {
-                med.name = name;
-                med.startDate = startDate;
-                med.endDate = endDate;
-                med.frequency = freq;
-                med.startTime = startTime;
-                med.dose = dose;
-                med.sound = sound;
-                if (app.state.currentPhoto) med.photo = app.state.currentPhoto;
+            if (!name || !startDate || !endDate || isNaN(freq) || !startTime || !dose) {
+                console.warn('Faltan campos obligatorios');
+                return alert('Por favor, completa todos los campos (Nombre, Dosis, Fechas, Horas y Frecuencia).');
             }
-            app.state.isEditingMed = false;
-        } else {
-            const newMed = {
-                id: Date.now(),
-                number: treatment.meds.length + 1,
-                name: name,
-                startDate,
-                endDate,
-                frequency: freq,
-                startTime,
-                dose: dose,
-                sound: sound,
-                photo: app.state.currentPhoto,
-                dosesTaken: []
-            };
-            treatment.meds.push(newMed);
-        }
 
-        app.saveToStorage();
-        app.hideAddMedModal();
-        app.renderMeds();
-        console.log('Medicamento guardado con éxito');
+            const treatment = app.state.treatments.find(t => t.id === app.state.currentTreatmentId);
+            if (!treatment) {
+                console.error('Tratamiento no encontrado:', app.state.currentTreatmentId);
+                return alert('Error crítico: Selección de tratamiento perdida. Recarga la app.');
+            }
+
+            if (!treatment.meds) treatment.meds = [];
+
+            if (app.state.isEditingMed) {
+                const med = treatment.meds.find(m => m.id === app.state.currentMedId);
+                if (med) {
+                    med.name = name;
+                    med.startDate = startDate;
+                    med.endDate = endDate;
+                    med.frequency = freq;
+                    med.startTime = startTime;
+                    med.dose = dose;
+                    med.sound = sound;
+                    if (app.state.currentPhoto) med.photo = app.state.currentPhoto;
+                    console.log('Medicamento editado correctamente');
+                }
+                app.state.isEditingMed = false;
+            } else {
+                const newMed = {
+                    id: Date.now(),
+                    number: treatment.meds.length + 1,
+                    name: name,
+                    startDate,
+                    endDate,
+                    frequency: freq,
+                    startTime,
+                    dose: dose,
+                    sound: sound,
+                    photo: app.state.currentPhoto,
+                    dosesTaken: []
+                };
+                treatment.meds.push(newMed);
+                console.log('Nuevo medicamento añadido');
+            }
+
+            app.saveToStorage();
+            app.hideAddMedModal();
+            app.renderMeds();
+        } catch (error) {
+            console.error('ERROR FATAL EN saveMedication:', error);
+            alert('Error inesperado al guardar: ' + error.message);
+        }
     },
 
     renderMeds: () => {
@@ -427,6 +514,15 @@ const app = {
 
         document.getElementById('alarm-overlay').classList.remove('hidden');
         app.playAlarmSound(med.sound);
+
+        // Notificación visual de respaldo
+        if ("Notification" in window && Notification.permission === "granted") {
+            new Notification(`¡HORA DE TU MEDICINA!`, {
+                body: `${med.name} - ${med.dose}`,
+                icon: 'https://cdn-icons-png.flaticon.com/512/3022/3022513.png',
+                vibrate: [200, 100, 200]
+            });
+        }
 
         // Vibración si está disponible
         if ("vibrate" in navigator) navigator.vibrate([500, 200, 500]);

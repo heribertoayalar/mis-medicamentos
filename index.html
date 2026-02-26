@@ -23,8 +23,15 @@
         <!-- Pantalla de Inicio / Listado de Tratamientos -->
         <section id="screen-home" class="screen">
             <header class="main-header">
-                <h1>Mis Medicamentos</h1>
-                <p class="subtitle">¡Hola! Es hora de cuidar tu salud.</p>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h1>Mis Medicamentos</h1>
+                        <p class="subtitle">Control y bienestar diario</p>
+                    </div>
+                    <div id="alarm-status-pill" class="status-pill status-off" onclick="app.setupSilentHeartbeat()">
+                        <span class="dot"></span> <span id="alarm-status-text">Alarmas Inactivas</span>
+                    </div>
+                </div>
             </header>
 
             <main class="content">
