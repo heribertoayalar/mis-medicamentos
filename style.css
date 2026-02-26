@@ -306,14 +306,22 @@ textarea {
     background: #f8fafc;
     padding: 1.5rem;
     border-radius: 20px;
-    margin: 1.5rem 0;
-    border: 1px solid #e2e8f0;
+    margin: 1rem 0;
+    border: 2px solid var(--primary-light);
 }
 
 .alarm-dose {
-    font-size: 1.5rem;
+    font-size: 1.8rem;
     font-weight: 800;
     color: var(--primary);
+    line-height: 1.2;
+}
+
+#alarm-num {
+    font-size: 2.5rem !important;
+    letter-spacing: -1px;
+    margin-bottom: 1rem !important;
+    display: block;
 }
 
 /* Alarm Overlay */

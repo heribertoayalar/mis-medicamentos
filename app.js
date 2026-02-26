@@ -287,6 +287,31 @@ const app = {
         app.showScreen('screen-med-control');
     },
 
+    getNaturalTime: (date) => {
+        const h = date.getHours();
+        const m = date.getMinutes().toString().padStart(2, '0');
+        let period = "";
+        let hour12 = h % 12 || 12;
+
+        if (h >= 0 && h < 5) period = "de la madrugada";
+        else if (h >= 5 && h < 12) period = "de la mañana";
+        else if (h >= 12 && h < 19) period = "de la tarde";
+        else period = "de la noche";
+
+        // Determinar el prefijo del periodo para la matriz
+        let periodName = "";
+        if (h >= 0 && h < 5) periodName = "Madrugada";
+        else if (h >= 5 && h < 12) periodName = "Mañana";
+        else if (h >= 12 && h < 19) periodName = "Tarde";
+        else periodName = "Noche";
+
+        return {
+            full: `${hour12}:${m} ${period}`,
+            short: `${hour12}:${m}`,
+            period: periodName
+        };
+    },
+
     renderIndicators: (med) => {
         const grid = document.getElementById('indicators-grid');
         const start = new Date(`${med.startDate}T${med.startTime}`);
@@ -298,10 +323,15 @@ const app = {
             const doseTime = new Date(start.getTime() + (i * med.frequency * 60 * 60 * 1000));
             const isTaken = med.dosesTaken.includes(i);
             const statusClass = isTaken ? 'taken' : 'pending';
+            const natTime = app.getNaturalTime(doseTime);
 
             html += `
-                <div class="indicator ${statusClass}" onclick="app.toggleDose(${i})">
-                    ${isTaken ? '✓' : `<b>${doseTime.getHours()}:${doseTime.getMinutes().toString().padStart(2, '0')}</b>`}
+                <div class="indicator ${statusClass}" onclick="app.toggleDose(${i})" style="flex-direction:column; min-height: 80px; padding: 0.5rem;">
+                    ${isTaken ? '✓' : `
+                        <span style="font-size: 0.7rem; font-weight: 400; opacity: 0.8;">${natTime.period}</span>
+                        <b style="font-size: 1.1rem; display: block; margin: 2px 0;">${natTime.short}</b>
+                        <span style="font-size: 0.65rem; font-weight: 400; opacity: 0.8;">${doseTime.toLocaleDateString([], { day: '2-digit', month: 'short' })}</span>
+                    `}
                 </div>`;
         }
         grid.innerHTML = html;
@@ -359,9 +389,13 @@ const app = {
     triggerAlarm: (treatment, med, doseIndex) => {
         app.state.activeAlarm = { treatment, med, doseIndex };
 
-        document.getElementById('alarm-num').innerText = `Medicina #${med.number}`;
+        const start = new Date(`${med.startDate}T${med.startTime}`);
+        const doseTime = new Date(start.getTime() + (doseIndex * med.frequency * 60 * 60 * 1000));
+        const natTime = app.getNaturalTime(doseTime);
+
+        document.getElementById('alarm-num').innerText = `MEDICINA #${med.number}`;
         document.getElementById('alarm-med-name').innerText = med.name;
-        document.getElementById('alarm-med-dose').innerText = `Dosis: ${med.dose}`;
+        document.getElementById('alarm-med-dose').innerHTML = `<b>Dosis: ${med.dose}</b><br><span style="font-size: 1.2rem; display: block; margin-top: 0.5rem; color: var(--text-main);">${natTime.full}</span>`;
         document.getElementById('alarm-treatment').innerText = `Tratamiento: ${treatment.name}`;
 
         const photoContainer = document.getElementById('alarm-photo-container');
