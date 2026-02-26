@@ -10,7 +10,8 @@ const app = {
         isEditingMed: false,
         wakeLock: null,
         heartbeatInterval: null,
-        silentPlayer: null
+        silentPlayer: null,
+        isAudioUnlocked: false
     },
 
     init: () => {
@@ -35,37 +36,34 @@ const app = {
                     pill.classList.remove('status-off');
                     pill.classList.add('status-on');
                     text.innerText = "Alarmas Activas";
+                    app.state.isAudioUnlocked = true;
                 } else {
                     pill.classList.remove('status-on');
                     pill.classList.add('status-off');
-                    text.innerText = "Alarmas Inactivas";
+                    text.innerText = "Toca para Activar";
                 }
             }
         };
 
-        if (!app.state.audioContext) {
-            app.state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-
         const startHeartbeat = () => {
-            if (app.state.heartbeatInterval) return;
+            if (app.state.isAudioUnlocked) return;
 
-            console.log('Iniciando latido silencioso...');
+            console.log('Desbloqueando motor de audio...');
+            if (!app.state.audioContext) {
+                app.state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            app.state.audioContext.resume();
+
+            // Creamos un oscilador silencioso que suena por siempre para mantener viva la app
+            const ctx = app.state.audioContext;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            gain.gain.value = 0.0001; // Inaudible
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+
             updatePill(true);
-
-            app.state.heartbeatInterval = setInterval(() => {
-                const ctx = app.state.audioContext;
-                if (ctx.state === 'suspended') ctx.resume();
-
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                gain.gain.value = 0.001;
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start();
-                osc.stop(ctx.currentTime + 0.1);
-            }, 25000);
-
             document.removeEventListener('click', startHeartbeat);
             document.removeEventListener('touchstart', startHeartbeat);
         };
@@ -217,10 +215,25 @@ const app = {
 
         const reader = new FileReader();
         reader.onload = (e) => {
-            app.state.currentPhoto = e.target.result;
-            const preview = document.getElementById('med-photo-preview');
-            preview.innerHTML = `<img src="${app.state.currentPhoto}" alt="Vista previa">`;
-            preview.classList.remove('hidden');
+            const img = new Image();
+            img.onload = () => {
+                // Comprimimos la imagen para que no pese megas
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 400;
+                const scaleSize = MAX_WIDTH / img.width;
+                canvas.width = MAX_WIDTH;
+                canvas.height = img.height * scaleSize;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                app.state.currentPhoto = canvas.toDataURL('image/jpeg', 0.7);
+                const preview = document.getElementById('med-photo-preview');
+                preview.innerHTML = `<img src="${app.state.currentPhoto}" alt="Vista previa">`;
+                preview.classList.remove('hidden');
+                console.log('Foto comprimida con éxito');
+            };
+            img.src = e.target.result;
         };
         reader.readAsDataURL(file);
     },
