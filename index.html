@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mis Medicamentos | Control Vital</title>
+    <!-- Google Fonts: Un estilo limpio y muy legible -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</head>
+
+<body>
+    <div id="app" class="app-container">
+        <!-- Pantalla de Inicio / Listado de Tratamientos -->
+        <section id="screen-home" class="screen">
+            <header class="main-header">
+                <h1>Mis Medicamentos</h1>
+                <p class="subtitle">¡Hola! Es hora de cuidar tu salud.</p>
+            </header>
+
+            <main class="content">
+                <div id="treatments-list" class="grid-list">
+                    <!-- Los tratamientos se cargarán aquí -->
+                </div>
+
+                <button class="btn btn-fab" onclick="app.showScreen('screen-add-treatment')">
+                    <span class="icon">+</span>
+                    <span>Nuevo Tratamiento</span>
+                </button>
+            </main>
+        </section>
+
+        <!-- Pantalla: Agregar/Editar Tratamiento -->
+        <section id="screen-add-treatment" class="screen hidden">
+            <header class="secondary-header">
+                <button class="btn-back" onclick="app.showScreen('screen-home')">← Volver</button>
+                <h1>Nuevo Tratamiento</h1>
+            </header>
+
+            <main class="content">
+                <div class="card shadow-premium">
+                    <div class="input-group">
+                        <label for="treatment-name">Nombre del Tratamiento</label>
+                        <input type="text" id="treatment-name" placeholder="Ej: Control de Presión">
+                    </div>
+                    <div class="input-group">
+                        <label for="treatment-notes">Notas / Comentarios</label>
+                        <textarea id="treatment-notes" placeholder="Ej: Tomar después del desayuno"></textarea>
+                    </div>
+                    <button class="btn btn-primary btn-large" onclick="app.saveTreatment()">Aceptar Tratamiento</button>
+                </div>
+            </main>
+        </section>
+
+        <!-- Pantalla: Detalle de Tratamiento (Medicamentos) -->
+        <section id="screen-treatment-detail" class="screen hidden">
+            <header class="secondary-header" id="detail-header">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <button class="btn-back" onclick="app.showScreen('screen-home')">← Volver</button>
+                    <div class="header-actions">
+                        <button class="btn-icon" onclick="app.editTreatmentPrompt()"
+                            title="Editar Tratamiento">✏️</button>
+                        <button class="btn-icon btn-icon-danger" onclick="app.deleteTreatmentPrompt()"
+                            title="Eliminar Tratamiento">🗑️</button>
+                    </div>
+                </div>
+                <h1 id="detail-title">Cargando...</h1>
+                <p id="detail-notes" style="font-size: 0.9rem; opacity: 0.8; margin-top: 0.5rem;"></p>
+            </header>
+
+            <main class="content">
+                <div id="meds-list" class="grid-list">
+                    <!-- Medicamentos del tratamiento -->
+                </div>
+
+                <button class="btn btn-secondary btn-large" onclick="app.showAddMedModal()">
+                    + Agregar Medicamento
+                </button>
+            </main>
+        </section>
+
+        <!-- Modal: Agregar Medicamento -->
+        <div id="modal-add-med" class="modal hidden">
+            <div class="modal-content animate-pop" style="max-height: 90vh; overflow-y: auto;">
+                <h2 id="modal-med-title">Cargar Medicamento</h2>
+                <div class="input-group">
+                    <label>Medicina Núm.</label>
+                    <input type="text" id="med-number" readonly
+                        style="background: #f8fafc; font-weight: bold; color: var(--primary);">
+                </div>
+                <div class="input-group">
+                    <label>Nombre del Medicamento</label>
+                    <input type="text" id="med-name" placeholder="Ej: Paracetamol">
+                </div>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label>Fecha Inicio</label>
+                        <input type="date" id="med-start-date">
+                    </div>
+                    <div class="input-group">
+                        <label>Fecha Fin</label>
+                        <input type="date" id="med-end-date">
+                    </div>
+                </div>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label>Cada cuántas horas</label>
+                        <input type="number" id="med-frequency" placeholder="8">
+                    </div>
+                    <div class="input-group">
+                        <label>Hora Primera Toma</label>
+                        <input type="time" id="med-start-time">
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label>Dosis / Cantidad</label>
+                    <input type="text" id="med-dose" placeholder="Ej: 1 pastilla">
+                </div>
+                <div class="input-group">
+                    <label>Foto del Medicamento</label>
+                    <div class="photo-upload-container">
+                        <button class="btn btn-secondary" type="button"
+                            onclick="document.getElementById('med-photo-input').click()">📸 Tomar/Cargar Foto</button>
+                        <input type="file" id="med-photo-input" accept="image/*" capture="environment"
+                            style="display:none;" onchange="app.handlePhotoUpload(event)">
+                        <div id="med-photo-preview" class="photo-preview hidden"></div>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label>Tono de Alarma</label>
+                    <select id="med-sound">
+                        <option value="pulse">Pulso Suave (Recomendado)</option>
+                        <option value="bell">Campana Clásica</option>
+                        <option value="digital">Alarma Digital</option>
+                        <option value="zen">Zen Meditativo</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-danger" onclick="app.hideAddMedModal()">Cancelar</button>
+                    <button class="btn btn-success" id="btn-save-med" onclick="app.saveMedication()">Guardar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pantalla: Panel de Control (Indicadores Rojo/Verde) -->
+        <section id="screen-med-control" class="screen hidden">
+            <header class="secondary-header">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <button class="btn-back" onclick="app.backToDetail()">← Volver</button>
+                    <button class="btn-icon btn-icon-danger" onclick="app.deleteMedicationPrompt()">🗑️</button>
+                </div>
+                <h1 id="control-med-name">Nombre Med</h1>
+            </header>
+            <main class="content">
+                <div class="med-photo-box card hidden" id="control-med-photo-container">
+                    <img id="control-med-photo" src="" alt="Foto del medicamento"
+                        style="width:100%; border-radius: 15px;">
+                </div>
+                <div class="med-info-box card">
+                    <p id="control-med-info">Dosis: 1 pastilla | Frecuencia: 8h</p>
+                </div>
+
+                <div class="indicators-container" id="indicators-grid">
+                    <!-- Los círculos/cuadros rojo/verde -->
+                </div>
+            </main>
+        </section>
+
+        <!-- Overlay de Alarma -->
+        <div id="alarm-overlay" class="alarm-overlay hidden">
+            <div class="alarm-card animate-pulse">
+                <div class="alarm-icon">🔔</div>
+                <div id="alarm-photo-container" class="alarm-photo hidden">
+                    <img id="alarm-med-photo" src="" alt="Foto medicina"
+                        style="width: 150px; height: 150px; object-fit: cover; border-radius: 50%; border: 5px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.2); margin-bottom: 1rem;">
+                </div>
+                <p id="alarm-num" style="color: var(--primary); font-weight: 800; margin-bottom: 0.5rem;"></p>
+                <h2 id="alarm-med-name">¡Hora de tu medicina!</h2>
+                <div class="alarm-details">
+                    <p class="alarm-dose" id="alarm-med-dose">Dosis: 1 pastilla</p>
+                    <p id="alarm-treatment" style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem;">
+                    </p>
+                </div>
+                <button class="btn btn-alarm-confirm" onclick="app.confirmDoseFromAlarm()">✅ ¡LO HICE!</button>
+                <button class="btn btn-secondary" style="margin-top: 1rem; background: #f1f5f9;"
+                    onclick="app.stopAlarmSilently()">Posponer (5 min)</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

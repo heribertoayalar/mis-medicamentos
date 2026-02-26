@@ -1,0 +1,21 @@
+{
+  "name": "Mis Medicamentos",
+  "short_name": "Medicamentos",
+  "description": "Control de medicamentos para adultos mayores",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3022/3022513.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3022/3022513.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
