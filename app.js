@@ -106,12 +106,17 @@ const app = {
 
     // --- MEDICAMENTOS ---
     showAddMedModal: () => {
+        if (!app.state.currentTreatmentId) return alert('Error: No hay un tratamiento seleccionado.');
+
         app.state.isEditingMed = false;
         app.state.currentPhoto = null;
         document.getElementById('med-photo-preview').innerHTML = '';
         document.getElementById('med-photo-preview').classList.add('hidden');
 
         const treatment = app.state.treatments.find(t => t.id === app.state.currentTreatmentId);
+        if (!treatment) return alert('Error: No se encontró el tratamiento.');
+
+        if (!treatment.meds) treatment.meds = [];
         const nextNum = (treatment.meds.length + 1);
 
         document.getElementById('modal-med-title').innerText = "Cargar Medicamento";
@@ -119,7 +124,8 @@ const app = {
 
         // Limpiar campos
         ['med-name', 'med-start-date', 'med-end-date', 'med-frequency', 'med-start-time', 'med-dose'].forEach(id => {
-            document.getElementById(id).value = '';
+            const el = document.getElementById(id);
+            if (el) el.value = '';
         });
 
         document.getElementById('modal-add-med').classList.remove('hidden');
@@ -153,21 +159,29 @@ const app = {
         const sound = document.getElementById('med-sound').value;
 
         if (!name || !startDate || !endDate || isNaN(freq) || !startTime) {
-            return alert('Completa todos los datos del medicamento.');
+            return alert('Por favor, completa todos los campos (Nombre, Fechas, Horas y Frecuencia).');
         }
 
         const treatment = app.state.treatments.find(t => t.id === app.state.currentTreatmentId);
+        if (!treatment) {
+            console.error('Treatment not found', app.state.currentTreatmentId);
+            return alert('Error crítico: No se encuentra el tratamiento actual.');
+        }
+
+        if (!treatment.meds) treatment.meds = [];
 
         if (app.state.isEditingMed) {
             const med = treatment.meds.find(m => m.id === app.state.currentMedId);
-            med.name = name;
-            med.startDate = startDate;
-            med.endDate = endDate;
-            med.frequency = freq;
-            med.startTime = startTime;
-            med.dose = dose;
-            med.sound = sound;
-            if (app.state.currentPhoto) med.photo = app.state.currentPhoto;
+            if (med) {
+                med.name = name;
+                med.startDate = startDate;
+                med.endDate = endDate;
+                med.frequency = freq;
+                med.startTime = startTime;
+                med.dose = dose;
+                med.sound = sound;
+                if (app.state.currentPhoto) med.photo = app.state.currentPhoto;
+            }
             app.state.isEditingMed = false;
         } else {
             const newMed = {
@@ -189,13 +203,14 @@ const app = {
         app.saveToStorage();
         app.hideAddMedModal();
         app.renderMeds();
+        console.log('Medicamento guardado con éxito');
     },
 
     renderMeds: () => {
         const treatment = app.state.treatments.find(t => t.id === app.state.currentTreatmentId);
         const list = document.getElementById('meds-list');
 
-        if (!treatment || treatment.meds.length === 0) {
+        if (!treatment || !treatment.meds || treatment.meds.length === 0) {
             list.innerHTML = '<p style="text-align:center; padding: 2rem; color:var(--text-muted)">Aún no hay medicamentos aquí.</p>';
             return;
         }
@@ -367,9 +382,12 @@ const app = {
     },
 
     checkMedicationAlarm: (treatment, med, now) => {
+        if (!med.startDate || !med.startTime || !med.endDate || !med.frequency) return;
+
         const start = new Date(`${med.startDate}T${med.startTime}`);
         const end = new Date(`${med.endDate}T23:59:59`);
 
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
         if (now < start || now > end) return;
 
         const total = Math.floor(((end - start) / (1000 * 60 * 60)) / med.frequency) + 1;
@@ -378,8 +396,9 @@ const app = {
             const doseTime = new Date(start.getTime() + (i * med.frequency * 60 * 60 * 1000));
             const diffMin = (now - doseTime) / (1000 * 60);
 
-            // Si estamos en el rango de 2 minutos de la toma Y no ha sido tomada
-            if (diffMin >= 0 && diffMin < 2 && !med.dosesTaken.includes(i)) {
+            // Si estamos en el rango de los primeros 5 minutos de la toma Y no ha sido tomada
+            if (diffMin >= 0 && diffMin < 5 && !med.dosesTaken.includes(i)) {
+                console.log(`Disparando alarma para: ${med.name}, toma #${i}`);
                 app.triggerAlarm(treatment, med, i);
                 break;
             }
@@ -414,44 +433,56 @@ const app = {
     },
 
     playAlarmSound: (type) => {
-        if (!app.state.audioContext) app.state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        try {
+            if (!app.state.audioContext) {
+                app.state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
 
-        const ctx = app.state.audioContext;
-        app.state.audioOscillator = ctx.createOscillator();
-        const gain = ctx.createGain();
+            const ctx = app.state.audioContext;
 
-        app.state.audioOscillator.connect(gain);
-        gain.connect(ctx.destination);
+            // Forzar el reinicio del contexto si está suspendido (requerido por navegadores modernos)
+            if (ctx.state === 'suspended') {
+                ctx.resume();
+            }
 
-        // Selección de Tono
-        switch (type) {
-            case 'bell':
-                app.state.audioOscillator.type = 'triangle';
-                app.state.audioOscillator.frequency.setValueAtTime(880, ctx.currentTime);
-                break;
-            case 'digital':
-                app.state.audioOscillator.type = 'square';
-                app.state.audioOscillator.frequency.setValueAtTime(440, ctx.currentTime);
-                break;
-            case 'zen':
-                app.state.audioOscillator.type = 'sine';
-                app.state.audioOscillator.frequency.setValueAtTime(220, ctx.currentTime);
-                break;
-            default: // pulse
-                app.state.audioOscillator.type = 'sine';
-                app.state.audioOscillator.frequency.setValueAtTime(440, ctx.currentTime);
+            app.state.audioOscillator = ctx.createOscillator();
+            const gain = ctx.createGain();
+
+            app.state.audioOscillator.connect(gain);
+            gain.connect(ctx.destination);
+
+            // Selección de Tono
+            switch (type) {
+                case 'bell':
+                    app.state.audioOscillator.type = 'triangle';
+                    app.state.audioOscillator.frequency.setValueAtTime(880, ctx.currentTime);
+                    break;
+                case 'digital':
+                    app.state.audioOscillator.type = 'square';
+                    app.state.audioOscillator.frequency.setValueAtTime(440, ctx.currentTime);
+                    break;
+                case 'zen':
+                    app.state.audioOscillator.type = 'sine';
+                    app.state.audioOscillator.frequency.setValueAtTime(220, ctx.currentTime);
+                    break;
+                default: // pulse
+                    app.state.audioOscillator.type = 'sine';
+                    app.state.audioOscillator.frequency.setValueAtTime(440, ctx.currentTime);
+            }
+
+            gain.gain.setValueAtTime(0, ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.1);
+
+            app.state.audioOscillator.start();
+
+            // Efecto de pulso
+            app.state.soundInterval = setInterval(() => {
+                gain.gain.setValueAtTime(0.5, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+            }, 1000);
+        } catch (e) {
+            console.error('Error tocando alarma:', e);
         }
-
-        gain.gain.setValueAtTime(0, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.1);
-
-        app.state.audioOscillator.start();
-
-        // Efecto de pulso
-        app.state.soundInterval = setInterval(() => {
-            gain.gain.setValueAtTime(0.5, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-        }, 1000);
     },
 
     stopAlarmSilently: () => {
@@ -461,11 +492,12 @@ const app = {
         }
         document.getElementById('alarm-overlay').classList.add('hidden');
 
-        // "Posponer" simplemente limpia la alarma activa por esta vuelta
+        // Permitir que el motor vuelva a chequear tras un pequeño delay
         setTimeout(() => { app.state.activeAlarm = null; }, 5000);
     },
 
     confirmDoseFromAlarm: () => {
+        if (!app.state.activeAlarm) return;
         const { med, doseIndex } = app.state.activeAlarm;
 
         if (!med.dosesTaken.includes(doseIndex)) {
@@ -474,7 +506,6 @@ const app = {
         }
 
         app.stopAlarmSilently();
-        app.state.activeAlarm = null;
         app.renderTreatments();
         console.log('Dosis confirmada desde alarma');
     },
