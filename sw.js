@@ -1,14 +1,14 @@
-const CACHE_NAME = 'mis-meds-v3'; // Nueva versión
+const CACHE_NAME = 'mis-meds-v4';
 const assets = [
     './',
     './index.html',
-    './style.css',
     './app.js',
-    './manifest.json'
+    './manifest.json',
+    'https://cdn.tailwindcss.com'
 ];
 
 self.addEventListener('install', e => {
-    self.skipWaiting(); // Forzar a que el nuevo service worker tome el control
+    self.skipWaiting();
     e.waitUntil(
         caches.open(CACHE_NAME).then(cache => {
             return cache.addAll(assets);
@@ -24,13 +24,14 @@ self.addEventListener('activate', e => {
             );
         })
     );
-    return self.clients.claim(); // Tomar el control de las pestañas abiertas inmediatamente
+    return self.clients.claim();
 });
 
+// Estrategia: Network First (Priorizar Red para cambios rápidos)
 self.addEventListener('fetch', e => {
     e.respondWith(
-        caches.match(e.request).then(response => {
-            return response || fetch(e.request);
+        fetch(e.request).catch(() => {
+            return caches.match(e.request);
         })
     );
 });

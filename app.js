@@ -26,7 +26,7 @@ const app = {
             if ("Notification" in window) {
                 Notification.requestPermission();
             }
-            console.log('Mis Medicamentos v3.2 - Cloud Sync Ready');
+            console.log('Mis Medicamentos v3.3 - Cloud Sync Robust');
         } catch (e) {
             console.error('Error durante init:', e);
             alert('Error al iniciar la app: ' + e.message);
