@@ -111,22 +111,40 @@ const app = {
             }
             app.state.db = firebase.database();
 
-            const familyId = "familia_default";
+            // Verificar conexión
+            app.state.db.ref(".info/connected").on("value", (snap) => {
+                const statusDot = document.getElementById('sync-status-dot');
+                if (statusDot) {
+                    if (snap.val() === true) {
+                        statusDot.classList.replace('bg-slate-300', 'bg-green-500');
+                        statusDot.classList.replace('bg-red-500', 'bg-green-500');
+                        console.log('Firebase: Conectado');
+                    } else {
+                        statusDot.classList.replace('bg-green-500', 'bg-red-500');
+                        console.warn('Firebase: Desconectado');
+                    }
+                }
+            });
+
+            const familyId = localStorage.getItem('zenmeds_family_id') || "familia_default";
             app.state.db.ref('families/' + familyId).on('value', (snapshot) => {
                 const data = snapshot.val();
-                if (data) {
-                    app.state.treatments = data.treatments || [];
-                } else {
-                    // Intento de migración solo si Firebase está vacío
+                if (data && data.treatments) {
+                    app.state.treatments = data.treatments;
+                    console.log('Sincronización: Datos recibidos');
+                } else if (data === null) {
+                    // Si Firebase está vacío, intentar migrar local
                     const localData = JSON.parse(localStorage.getItem('zenmeds_treatments'));
-                    if (localData) {
+                    if (localData && localData.length > 0) {
+                        console.log('Migración: Subiendo datos a la nube por primera vez');
                         app.state.treatments = localData;
                         app.saveToStorage();
                     }
                 }
                 app.renderHome();
             }, (error) => {
-                alert("Error de conexión con la base de datos: " + error.message);
+                console.error("Error Firebase:", error);
+                alert("Error de Firebase (Posiblemente Reglas): " + error.message);
             });
         } catch (e) {
             console.error('Error Firebase:', e);
@@ -135,14 +153,20 @@ const app = {
 
     saveToStorage: () => {
         if (!app.state.db) return console.warn('Base de datos no inicializada');
-        const familyId = "familia_default";
+        const familyId = localStorage.getItem('zenmeds_family_id') || "familia_default";
+
+        // Guardado local de respaldo inmediato
+        localStorage.setItem('zenmeds_treatments', JSON.stringify(app.state.treatments));
+
         app.state.db.ref('families/' + familyId).set({
             treatments: app.state.treatments,
             lastUpdate: Date.now()
         }).then(() => {
+            console.log('Éxito: Datos en la nube');
             app.renderDashboard();
         }).catch(err => {
-            alert('No se pudo guardar en la nube: ' + err.message);
+            console.error('Fallo al guardar nube:', err);
+            alert('¡ALERTA! No se pudo guardar en la nube. Tus datos se guardaron solo en este móvil por ahora. Error: ' + err.message);
         });
     },
 
@@ -169,11 +193,12 @@ const app = {
                 t.meds.forEach(m => {
                     const start = new Date(`${m.startDate}T${m.startTime}`);
                     const end = new Date(`${m.endDate}T23:59:59`);
-                    const total = Math.floor(((end - start) / (1000 * 60 * 60)) / m.frequency) + 1;
+                    const freq = parseInt(m.frequency) || 4;
+                    const total = Math.floor(((end - start) / (1000 * 60 * 60)) / freq) + 1;
 
                     for (let i = 0; i < total; i++) {
-                        const doseTime = new Date(start.getTime() + (i * m.frequency * 60 * 60 * 1000));
-                        if (doseTime > now && doseTime < limit && !m.dosesTaken.includes(i)) {
+                        const doseTime = new Date(start.getTime() + (i * freq * 60 * 60 * 1000));
+                        if (doseTime > now && doseTime < limit && !(m.dosesTaken || []).includes(i)) {
                             nextDoses.push({
                                 treatmentId: t.id,
                                 medId: m.id,
@@ -221,11 +246,14 @@ const app = {
     quickConfirm: (tId, mId, index) => {
         if (confirm('¿Confirmar que ya tomaste este medicamento?')) {
             const t = app.state.treatments.find(x => x.id === tId);
-            const m = t.meds.find(x => x.id === mId);
-            if (m && !m.dosesTaken.includes(index)) {
-                m.dosesTaken.push(index);
-                app.saveToStorage();
-                app.renderHome();
+            const m = t?.meds?.find(x => x.id === mId);
+            if (m) {
+                if (!m.dosesTaken) m.dosesTaken = [];
+                if (!m.dosesTaken.includes(index)) {
+                    m.dosesTaken.push(index);
+                    app.saveToStorage();
+                    app.renderHome();
+                }
             }
         }
     },
@@ -412,7 +440,9 @@ const app = {
         list.innerHTML = treatment.meds.map(m => {
             const start = new Date(`${m.startDate}T${m.startTime}`);
             const end = new Date(`${m.endDate}T23:59:59`);
-            const total = Math.floor(((end - start) / (1000 * 60 * 60)) / m.frequency) + 1;
+            const freq = parseInt(m.frequency) || 4;
+            const total = Math.floor(((end - start) / (1000 * 60 * 60)) / freq) + 1;
+            const takenCount = (m.dosesTaken || []).length;
 
             return `
                 <div class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm" onclick="app.openControl(${m.id})">
@@ -421,7 +451,7 @@ const app = {
                     </div>
                     <div class="flex-1">
                         <p class="text-lg font-bold text-slate-900 dark:text-slate-100">${m.name}</p>
-                        <p class="text-base text-slate-500 dark:text-slate-400 font-medium">${m.dose} • ${m.dosesTaken.length}/${total}</p>
+                        <p class="text-base text-slate-500 dark:text-slate-400 font-medium">${m.dose} • ${takenCount}/${total}</p>
                     </div>
                     <div class="flex flex-col gap-2">
                          <button class="text-primary" onclick="app.editMedicationPrompt(${m.id}); event.stopPropagation();"><span class="material-symbols-outlined">edit</span></button>
@@ -496,7 +526,7 @@ const app = {
 
         grid.innerHTML = Array.from({ length: total }).map((_, i) => {
             const doseTime = new Date(start.getTime() + (i * med.frequency * 60 * 60 * 1000));
-            const isTaken = med.dosesTaken.includes(i);
+            const isTaken = (med.dosesTaken || []).includes(i);
             const timeStr = doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const dateStr = doseTime.toLocaleDateString([], { day: '2-digit', month: 'short' });
 
@@ -520,11 +550,14 @@ const app = {
 
     toggleDose: (index) => {
         const t = app.state.treatments.find(t => t.id === app.state.currentTreatmentId);
-        const m = t.meds.find(m => m.id === app.state.currentMedId);
-        if (m.dosesTaken.includes(index)) m.dosesTaken = m.dosesTaken.filter(i => i !== index);
-        else m.dosesTaken.push(index);
-        app.saveToStorage();
-        app.renderIndicators(m);
+        const m = t?.meds?.find(m => m.id === app.state.currentMedId);
+        if (m) {
+            if (!m.dosesTaken) m.dosesTaken = [];
+            if (m.dosesTaken.includes(index)) m.dosesTaken = m.dosesTaken.filter(i => i !== index);
+            else m.dosesTaken.push(index);
+            app.saveToStorage();
+            app.renderIndicators(m);
+        }
     },
 
     // --- ALARMAS ---
@@ -545,7 +578,7 @@ const app = {
         for (let i = 0; i < total; i++) {
             const doseTime = new Date(start.getTime() + (i * m.frequency * 60 * 60 * 1000));
             const diffMin = (now - doseTime) / (1000 * 60);
-            if (diffMin >= 0 && diffMin < 5 && !m.dosesTaken.includes(i)) {
+            if (diffMin >= 0 && diffMin < 5 && !(m.dosesTaken || []).includes(i)) {
                 app.triggerAlarm(t, m, i);
                 break;
             }
@@ -601,7 +634,11 @@ const app = {
     confirmDoseFromAlarm: () => {
         if (!app.state.activeAlarm) return;
         const { med, doseIndex } = app.state.activeAlarm;
-        if (!med.dosesTaken.includes(doseIndex)) { med.dosesTaken.push(doseIndex); app.saveToStorage(); }
+        if (!med.dosesTaken) med.dosesTaken = [];
+        if (!med.dosesTaken.includes(doseIndex)) {
+            med.dosesTaken.push(doseIndex);
+            app.saveToStorage();
+        }
         app.stopAlarmSilently();
         app.renderHome();
     },

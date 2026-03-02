@@ -70,10 +70,16 @@
                         <h1 class="text-2xl font-bold tracking-tight">Mis Medicamentos</h1>
                     </div>
                     <div id="alarm-status-pill"
-                        class="status-pill bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2 cursor-pointer"
-                        onclick="app.setupSilentHeartbeat()">
-                        <span class="w-2 h-2 rounded-full bg-current"></span>
+                        class="status-pill bg-red-100 text-red-700 px-3 py-1.5 rounded-full flex items-center gap-2 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer">
+                        <span class="w-2 h-2 rounded-full bg-current animate-pulse"></span>
                         <span id="alarm-status-text">Inactivo</span>
+                    </div>
+                    <!-- Indicador Nube -->
+                    <div
+                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold uppercase tracking-widest shadow-sm">
+                        <span id="sync-status-dot"
+                            class="w-1.5 h-1.5 rounded-full bg-slate-300 transition-colors"></span>
+                        Nube
                     </div>
                 </div>
             </header>
