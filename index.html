@@ -1,207 +1,350 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="light">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mis Medicamentos | Control Vital</title>
-    <!-- Google Fonts: Un estilo limpio y muy legible -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        rel="stylesheet" />
     <link rel="manifest" href="manifest.json">
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js');
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#0f3bbd",
+                        "background-light": "#fdfbf7",
+                        "background-dark": "#101522",
+                        "brick-red": "#d9534f",
+                        "sage-green": "#86a38b",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: { "DEFAULT": "0.5rem", "lg": "1rem", "xl": "1.5rem", "full": "9999px" },
+                },
+            },
         }
     </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .ios-shadow {
+            box-shadow: 0 4px 20px -2px rgba(15, 59, 189, 0.08);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .screen {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
 </head>
 
-<body>
-    <div id="app" class="app-container">
-        <!-- Pantalla de Inicio / Listado de Tratamientos -->
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
+    <div id="app"
+        class="relative mx-auto min-h-screen max-w-[480px] bg-background-light dark:bg-background-dark shadow-xl overflow-x-hidden flex flex-col">
+
+        <!-- PANTALLA INICIO (Dashboard + Tratamientos) -->
         <section id="screen-home" class="screen">
-            <header class="main-header">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <h1>Mis Medicamentos</h1>
-                        <p class="subtitle">Control y bienestar diario</p>
+            <header
+                class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10 px-6 pt-12 pb-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-primary/10 p-2 rounded-lg">
+                            <span class="material-symbols-outlined text-primary text-3xl">medical_services</span>
+                        </div>
+                        <h1 class="text-2xl font-bold tracking-tight">Mis Medicamentos</h1>
                     </div>
-                    <div id="alarm-status-pill" class="status-pill status-off" onclick="app.setupSilentHeartbeat()">
-                        <span class="dot"></span> <span id="alarm-status-text">Alarmas Inactivas</span>
+                    <div id="alarm-status-pill"
+                        class="status-pill bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2 cursor-pointer"
+                        onclick="app.setupSilentHeartbeat()">
+                        <span class="w-2 h-2 rounded-full bg-current"></span>
+                        <span id="alarm-status-text">Inactivo</span>
                     </div>
                 </div>
             </header>
 
-            <main class="content">
-                <div id="treatments-list" class="grid-list">
-                    <!-- Los tratamientos se cargarán aquí -->
-                </div>
+            <main class="flex-1 px-6 py-6 space-y-8 overflow-y-auto">
+                <!-- Dashboard: Próximas Tomas -->
+                <section id="dashboard-next-doses" class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-bold text-slate-800 dark:text-slate-200">Próximas Tomas</h2>
+                        <span class="text-xs font-semibold text-primary uppercase tracking-widest">Hoy</span>
+                    </div>
+                    <div id="next-doses-container" class="grid grid-cols-2 gap-4">
+                        <!-- Las tarjetas del dashboard se cargarán aquí -->
+                        <p class="col-span-2 text-center text-slate-400 py-4 italic">No hay tomas pendientes pronto.</p>
+                    </div>
+                </section>
 
-                <button class="btn btn-fab" onclick="app.showScreen('screen-add-treatment')">
-                    <span class="icon">+</span>
-                    <span>Nuevo Tratamiento</span>
-                </button>
+                <!-- Lista de Tratamientos -->
+                <section class="space-y-4">
+                    <h2 class="text-lg font-bold text-slate-800 dark:text-slate-200">Tus Tratamientos</h2>
+                    <div id="treatments-list" class="space-y-4">
+                        <!-- Los tratamientos se cargarán aquí -->
+                    </div>
+                </section>
+
+                <div class="pt-4 pb-12">
+                    <button
+                        class="w-full py-6 bg-primary text-white rounded-xl font-black text-xl flex items-center justify-center gap-3 shadow-xl active:scale-[0.97] transition-all"
+                        onclick="app.showScreen('screen-add-treatment')">
+                        <span class="material-symbols-outlined text-3xl">add_circle</span>
+                        Añadir Nuevo Tratamiento
+                    </button>
+                </div>
             </main>
         </section>
 
-        <!-- Pantalla: Agregar/Editar Tratamiento -->
+        <!-- PANTALLA: AGREGAR/EDITAR TRATAMIENTO -->
         <section id="screen-add-treatment" class="screen hidden">
-            <header class="secondary-header">
-                <button class="btn-back" onclick="app.showScreen('screen-home')">← Volver</button>
-                <h1>Nuevo Tratamiento</h1>
+            <header
+                class="sticky top-0 z-50 bg-background-light/80 backdrop-blur-md p-4 border-b border-slate-100 flex items-center">
+                <button
+                    class="text-slate-900 flex size-12 items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
+                    onclick="app.showScreen('screen-home')">
+                    <span class="material-symbols-outlined text-3xl">arrow_back</span>
+                </button>
+                <h1 id="screen-add-treatment-title" class="text-xl font-bold flex-1 text-center pr-12">Nuevo Tratamiento
+                </h1>
             </header>
 
-            <main class="content">
-                <div class="card shadow-premium">
-                    <div class="input-group">
-                        <label for="treatment-name">Nombre del Tratamiento</label>
-                        <input type="text" id="treatment-name" placeholder="Ej: Control de Presión">
+            <main class="flex-1 px-5 py-6 space-y-6 overflow-y-auto">
+                <div class="space-y-6">
+                    <div class="flex flex-col gap-2">
+                        <label class="text-lg font-semibold">Nombre del Tratamiento</label>
+                        <input id="treatment-name"
+                            class="w-full h-16 rounded-xl border border-slate-300 px-4 text-xl font-medium focus:ring-2 focus:ring-primary/50 outline-none"
+                            placeholder="Ej: Control de Presión" type="text">
                     </div>
-                    <div class="input-group">
-                        <label for="treatment-notes">Notas / Comentarios</label>
-                        <textarea id="treatment-notes" placeholder="Ej: Tomar después del desayuno"></textarea>
+                    <div class="flex flex-col gap-2">
+                        <label class="text-lg font-semibold">Comentarios y Notas</label>
+                        <textarea id="treatment-notes"
+                            class="w-full rounded-xl border border-slate-300 p-4 min-h-[140px] text-lg focus:ring-2 focus:ring-primary/50 outline-none resize-none"
+                            placeholder="Notas adicionales o recordatorios importantes"></textarea>
                     </div>
-                    <button class="btn btn-primary btn-large" onclick="app.saveTreatment()">Aceptar Tratamiento</button>
+                    <button
+                        class="w-full py-5 bg-primary text-white rounded-xl font-bold text-xl shadow-lg active:scale-[0.98] transition-all"
+                        onclick="app.saveTreatment()">
+                        Guardar Tratamiento
+                    </button>
                 </div>
             </main>
         </section>
 
-        <!-- Pantalla: Detalle de Tratamiento (Medicamentos) -->
+        <!-- PANTALLA: DETALLE DE TRATAMIENTO -->
         <section id="screen-treatment-detail" class="screen hidden">
-            <header class="secondary-header" id="detail-header">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                    <button class="btn-back" onclick="app.showScreen('screen-home')">← Volver</button>
-                    <div class="header-actions">
-                        <button class="btn-icon" onclick="app.editTreatmentPrompt()"
-                            title="Editar Tratamiento">✏️</button>
-                        <button class="btn-icon btn-icon-danger" onclick="app.deleteTreatmentPrompt()"
-                            title="Eliminar Tratamiento">🗑️</button>
-                    </div>
+            <header
+                class="sticky top-0 z-50 bg-background-light/80 backdrop-blur-md p-4 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <button
+                        class="text-slate-900 flex size-12 items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
+                        onclick="app.showScreen('screen-home')">
+                        <span class="material-symbols-outlined text-3xl">arrow_back</span>
+                    </button>
                 </div>
-                <h1 id="detail-title">Cargando...</h1>
-                <p id="detail-notes" style="font-size: 0.9rem; opacity: 0.8; margin-top: 0.5rem;"></p>
+                <h1 id="detail-title" class="text-xl font-bold truncate max-w-[200px]">Detalle</h1>
+                <div class="flex gap-1">
+                    <button class="text-slate-400 p-2" onclick="app.editTreatmentPrompt()"><span
+                            class="material-symbols-outlined">edit</span></button>
+                    <button class="text-red-400 p-2" onclick="app.deleteTreatmentPrompt()"><span
+                            class="material-symbols-outlined">delete</span></button>
+                </div>
             </header>
 
-            <main class="content">
-                <div id="meds-list" class="grid-list">
-                    <!-- Medicamentos del tratamiento -->
+            <main class="flex-1 px-5 py-6 space-y-6 overflow-y-auto pb-24">
+                <p id="detail-notes" class="text-slate-500 italic px-2"></p>
+                <div class="flex items-center justify-between pt-4">
+                    <h3 class="text-xl font-bold">Medicamentos</h3>
                 </div>
-
-                <button class="btn btn-secondary btn-large" onclick="app.showAddMedModal()">
-                    + Agregar Medicamento
+                <div id="meds-list" class="space-y-4">
+                    <!-- Medicamentos se cargarán aquí -->
+                </div>
+                <button
+                    class="w-full flex items-center justify-center gap-3 bg-slate-900 text-white font-bold text-xl py-5 rounded-xl transition-all shadow-lg active:scale-[0.98]"
+                    onclick="app.showAddMedModal()">
+                    <span class="material-symbols-outlined text-2xl">add_circle</span>
+                    Añadir Medicamento
                 </button>
             </main>
         </section>
 
-        <!-- Modal: Agregar Medicamento -->
-        <div id="modal-add-med" class="modal hidden">
-            <div class="modal-content animate-pop" style="max-height: 90vh; overflow-y: auto;">
-                <h2 id="modal-med-title">Cargar Medicamento</h2>
-                <div class="input-group">
-                    <label>Medicina Núm.</label>
-                    <input type="text" id="med-number" readonly
-                        style="background: #f8fafc; font-weight: bold; color: var(--primary);">
-                </div>
-                <div class="input-group">
-                    <label>Nombre del Medicamento</label>
-                    <input type="text" id="med-name" placeholder="Ej: Paracetamol">
-                </div>
-                <div class="input-row">
-                    <div class="input-group">
-                        <label>Fecha Inicio</label>
-                        <input type="date" id="med-start-date">
+        <!-- MODAL: AGREGAR MEDICAMENTO (Adaptado de Configurador v3) -->
+        <div id="modal-add-med" class="fixed inset-0 z-[100] bg-black/60 hidden flex-col justify-end">
+            <div
+                class="bg-white rounded-t-[30px] w-full max-w-[480px] mx-auto overflow-hidden animate-pop flex flex-col max-h-[92vh]">
+                <header class="p-6 border-b flex items-center justify-between">
+                    <h2 id="modal-med-title" class="text-xl font-bold">Nuevo Medicamento</h2>
+                    <button class="text-slate-400" onclick="app.hideAddMedModal()"><span
+                            class="material-symbols-outlined text-3xl">close</span></button>
+                </header>
+                <main class="p-6 space-y-6 overflow-y-auto">
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Número de
+                            Medicina</label>
+                        <input id="med-number"
+                            class="w-full h-14 bg-slate-50 border-none rounded-xl font-bold text-primary px-4" readonly
+                            type="text">
                     </div>
-                    <div class="input-group">
-                        <label>Fecha Fin</label>
-                        <input type="date" id="med-end-date">
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Nombre del
+                            Medicamento</label>
+                        <input id="med-name"
+                            class="w-full h-16 border-2 border-slate-100 rounded-2xl px-4 text-lg font-medium focus:border-primary outline-none"
+                            placeholder="Ej: Paracetamol 500mg" type="text">
                     </div>
-                </div>
-                <div class="input-row">
-                    <div class="input-group">
-                        <label>Cada cuántas horas</label>
-                        <input type="number" id="med-frequency" placeholder="8">
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Frecuencia
+                                (Horas)</label>
+                            <input id="med-frequency"
+                                class="w-full h-14 border-2 border-slate-100 rounded-xl px-4 font-bold text-center"
+                                type="number" placeholder="8">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Hora Inicio</label>
+                            <input id="med-start-time"
+                                class="w-full h-14 border-2 border-slate-100 rounded-xl px-4 text-center" type="time">
+                        </div>
                     </div>
-                    <div class="input-group">
-                        <label>Hora Primera Toma</label>
-                        <input type="time" id="med-start-time">
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Fecha
+                                Inicio</label>
+                            <input id="med-start-date" class="w-full h-14 border-2 border-slate-100 rounded-xl px-4"
+                                type="date">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Fecha Fin</label>
+                            <input id="med-end-date" class="w-full h-14 border-2 border-slate-100 rounded-xl px-4"
+                                type="date">
+                        </div>
                     </div>
-                </div>
-                <div class="input-group">
-                    <label>Dosis / Cantidad</label>
-                    <input type="text" id="med-dose" placeholder="Ej: 1 pastilla">
-                </div>
-                <div class="input-group">
-                    <label>Foto del Medicamento</label>
-                    <div class="photo-upload-container">
-                        <button class="btn btn-secondary" type="button"
-                            onclick="document.getElementById('med-photo-input').click()">📸 Tomar/Cargar Foto</button>
-                        <input type="file" id="med-photo-input" accept="image/*" capture="environment"
-                            style="display:none;" onchange="app.handlePhotoUpload(event)">
-                        <div id="med-photo-preview" class="photo-preview hidden"></div>
+
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Dosis /
+                            Cantidad</label>
+                        <input id="med-dose" class="w-full h-14 border-2 border-slate-100 rounded-xl px-4"
+                            placeholder="Ej: 1 pastilla" type="text">
                     </div>
-                </div>
-                <div class="input-group">
-                    <label>Tono de Alarma</label>
-                    <select id="med-sound">
-                        <option value="pulse">Pulso Suave (Recomendado)</option>
-                        <option value="bell">Campana Clásica</option>
-                        <option value="digital">Alarma Digital</option>
-                        <option value="zen">Zen Meditativo</option>
-                    </select>
-                </div>
-                <div class="modal-actions">
-                    <button class="btn btn-danger" onclick="app.hideAddMedModal()">Cancelar</button>
-                    <button class="btn btn-success" id="btn-save-med" onclick="app.saveMedication()">Guardar</button>
-                </div>
+
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Tono de Alarma</label>
+                        <select id="med-sound" class="w-full h-14 border-2 border-slate-100 rounded-xl px-4">
+                            <option value="pulse">Pulso Suave</option>
+                            <option value="bell">Campana</option>
+                            <option value="digital">Digital</option>
+                            <option value="zen">Zen</option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Identificación
+                            Visual</label>
+                        <button
+                            class="w-full flex items-center justify-center gap-3 py-6 bg-primary/5 border-2 border-dashed border-primary/20 rounded-2xl text-primary font-bold"
+                            onclick="document.getElementById('med-photo-input').click()">
+                            <span class="material-symbols-outlined">photo_camera</span>
+                            Tomar/Subir Foto
+                        </button>
+                        <input type="file" id="med-photo-input" accept="image/*" capture="environment" class="hidden"
+                            onchange="app.handlePhotoUpload(event)">
+                        <div id="med-photo-preview" class="mt-4 rounded-xl overflow-hidden hidden border"></div>
+                    </div>
+                </main>
+                <footer class="p-6 border-t bg-slate-50 flex gap-4">
+                    <button class="flex-1 py-4 bg-white border border-slate-200 rounded-xl font-bold"
+                        onclick="app.hideAddMedModal()">Cancelar</button>
+                    <button class="flex-1 py-4 bg-primary text-white rounded-xl font-bold shadow-lg"
+                        onclick="app.saveMedication()">Guardar</button>
+                </footer>
             </div>
         </div>
 
-        <!-- Pantalla: Panel de Control (Indicadores Rojo/Verde) -->
+        <!-- PANTALLA: PANEL DE CONTROL (Cuadrícula de Tomas) -->
         <section id="screen-med-control" class="screen hidden">
-            <header class="secondary-header">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <button class="btn-back" onclick="app.backToDetail()">← Volver</button>
-                    <button class="btn-icon btn-icon-danger" onclick="app.deleteMedicationPrompt()">🗑️</button>
-                </div>
-                <h1 id="control-med-name">Nombre Med</h1>
+            <header class="p-4 flex items-center justify-between border-b">
+                <button class="text-slate-900 flex size-12 items-center justify-center rounded-full hover:bg-slate-100"
+                    onclick="app.backToDetail()">
+                    <span class="material-symbols-outlined text-3xl">arrow_back</span>
+                </button>
+                <h1 id="control-med-name" class="text-xl font-bold flex-1 text-center pr-12">Control de Toma</h1>
             </header>
-            <main class="content">
-                <div class="med-photo-box card hidden" id="control-med-photo-container">
-                    <img id="control-med-photo" src="" alt="Foto del medicamento"
-                        style="width:100%; border-radius: 15px;">
-                </div>
-                <div class="med-info-box card">
-                    <p id="control-med-info">Dosis: 1 pastilla | Frecuencia: 8h</p>
+            <main class="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+                <!-- Resumen de hoy -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center space-y-2">
+                    <p class="text-sm font-bold text-slate-400 uppercase tracking-widest">Estado del Medicamento</p>
+                    <div id="control-med-photo-container"
+                        class="w-24 h-24 mx-auto rounded-full overflow-hidden border-4 border-primary/10 hidden mb-2">
+                        <img id="control-med-photo" class="w-full h-full object-cover" src="" alt="Foto Med">
+                    </div>
+                    <h2 id="control-med-info" class="text-lg font-bold">Medicamento - Dosis</h2>
                 </div>
 
-                <div class="indicators-container" id="indicators-grid">
-                    <!-- Los círculos/cuadros rojo/verde -->
+                <div id="indicators-grid" class="grid grid-cols-2 gap-4">
+                    <!-- Cuadros de tomas (Stitch style) -->
                 </div>
+                <p class="text-slate-400 text-sm text-center italic py-4">Toca un cuadro para cambiar el estado de la
+                    toma</p>
             </main>
         </section>
 
-        <!-- Overlay de Alarma -->
-        <div id="alarm-overlay" class="alarm-overlay hidden">
-            <div class="alarm-card animate-pulse">
-                <div class="alarm-icon">🔔</div>
-                <div id="alarm-photo-container" class="alarm-photo hidden">
-                    <img id="alarm-med-photo" src="" alt="Foto medicina"
-                        style="width: 150px; height: 150px; object-fit: cover; border-radius: 50%; border: 5px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.2); margin-bottom: 1rem;">
+        <!-- OVERLAY DE ALARMA (Versión Rediseñada) -->
+        <div id="alarm-overlay"
+            class="fixed inset-0 z-[9999] bg-brick-red p-4 flex flex-col items-center justify-center hidden">
+            <div
+                class="bg-white w-full max-w-[400px] rounded-[40px] p-8 text-center space-y-6 shadow-2xl animate-pulse">
+                <div
+                    class="w-20 h-20 bg-brick-red/10 text-brick-red rounded-full flex items-center justify-center mx-auto">
+                    <span class="material-symbols-outlined text-5xl">notifications_active</span>
                 </div>
-                <p id="alarm-num" style="color: var(--primary); font-weight: 800; margin-bottom: 0.5rem;"></p>
-                <h2 id="alarm-med-name">¡Hora de tu medicina!</h2>
-                <div class="alarm-details">
-                    <p class="alarm-dose" id="alarm-med-dose">Dosis: 1 pastilla</p>
-                    <p id="alarm-treatment" style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem;">
+
+                <div id="alarm-photo-container" class="hidden">
+                    <img id="alarm-med-photo"
+                        class="w-32 h-32 mx-auto rounded-full border-8 border-brick-red/5 object-cover" src=""
+                        alt="Med">
+                </div>
+
+                <div class="space-y-1">
+                    <p id="alarm-num" class="text-brick-red font-black text-3xl uppercase tracking-tighter">Medicina #1
                     </p>
+                    <h2 id="alarm-med-name" class="text-2xl font-black text-slate-900">¡Hora de tomarla!</h2>
                 </div>
-                <button class="btn btn-alarm-confirm" onclick="app.confirmDoseFromAlarm()">✅ ¡LO HICE!</button>
-                <button class="btn btn-secondary" style="margin-top: 1rem; background: #f1f5f9;"
-                    onclick="app.stopAlarmSilently()">Posponer (5 min)</button>
+
+                <div class="bg-slate-50 p-6 rounded-3xl space-y-1 border border-slate-100">
+                    <p id="alarm-med-dose" class="text-2xl font-bold text-primary">1 pastilla</p>
+                    <p id="alarm-treatment" class="text-sm font-bold text-slate-400 uppercase"></p>
+                </div>
+
+                <div class="flex flex-col gap-3">
+                    <button
+                        class="w-full py-6 bg-sage-green text-white rounded-2xl font-black text-xl shadow-lg active:scale-95 transition-all"
+                        onclick="app.confirmDoseFromAlarm()">
+                        ✅ ¡LO HICE!
+                    </button>
+                    <button class="w-full py-4 text-slate-400 font-bold" onclick="app.stopAlarmSilently()">
+                        Posponer 5 min
+                    </button>
+                </div>
             </div>
         </div>
+
     </div>
 
     <script src="app.js"></script>

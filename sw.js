@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mis-meds-v1';
+const CACHE_NAME = 'mis-meds-v2';
 const assets = [
     './',
     './index.html',
