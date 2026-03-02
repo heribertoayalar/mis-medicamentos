@@ -17,16 +17,20 @@ const app = {
     },
 
     init: () => {
-        app.initFirebase();
-        app.startAlarmEngine();
-        app.requestWakeLock();
-        app.setupSilentHeartbeat();
+        try {
+            app.initFirebase();
+            app.startAlarmEngine();
+            app.requestWakeLock();
+            app.setupSilentHeartbeat();
 
-        if ("Notification" in window) {
-            Notification.requestPermission();
+            if ("Notification" in window) {
+                Notification.requestPermission();
+            }
+            console.log('Mis Medicamentos v3.2 - Cloud Sync Ready');
+        } catch (e) {
+            console.error('Error durante init:', e);
+            alert('Error al iniciar la app: ' + e.message);
         }
-
-        console.log('Mis Medicamentos v3.1 - Cloud Sync Enabled');
     },
 
     setupSilentHeartbeat: () => {
@@ -87,62 +91,59 @@ const app = {
     },
 
     initFirebase: () => {
+        if (typeof firebase === 'undefined') {
+            return alert('Error: Los scripts de Firebase no se cargaron. Revisa tu internet.');
+        }
+
         const firebaseConfig = {
             apiKey: "AIzaSyA_eekbCWWvnQl0-_FrPWHUV_8S7SrRIJs",
             authDomain: "mis-medicamentos-77281.firebaseapp.com",
             projectId: "mis-medicamentos-77281",
             storageBucket: "mis-medicamentos-77281.firebasestorage.app",
             messagingSenderId: "866453193922",
-            appId: "1:866453193922:web:30198a87431421ec99e75b"
+            appId: "1:866453193922:web:30198a87431421ec99e75b",
+            databaseURL: "https://mis-medicamentos-77281-default-rtdb.firebaseio.com"
         };
 
-        // Inicializar Firebase (Modo Compat)
-        firebase.initializeApp(firebaseConfig);
-        app.state.db = firebase.database();
-
-        // Sincronización en tiempo real
-        const familyId = "familia_default"; // Podemos hacerlo dinámico luego
-        app.state.db.ref('families/' + familyId).on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (data) {
-                app.state.treatments = data.treatments || [];
-                console.log('Sincronización Cloud: Datos actualizados');
-
-                // Si hay datos en localStorage que NO están en Firebase, los subimos (Migración)
-                const localData = JSON.parse(localStorage.getItem('zenmeds_treatments'));
-                if (localData && (!data.treatments || data.treatments.length === 0)) {
-                    console.log('Migración: Subiendo datos locales a la nube...');
-                    app.state.treatments = localData;
-                    app.saveToStorage();
-                    localStorage.removeItem('zenmeds_treatments'); // Limpiar tras migrar
-                }
-
-                // Renderizar cambios
-                if (!document.getElementById('screen-home').classList.contains('hidden')) app.renderHome();
-                if (!document.getElementById('screen-treatment-detail').classList.contains('hidden')) app.renderMeds();
-                if (!document.getElementById('screen-med-control').classList.contains('hidden')) {
-                    const treatment = app.state.treatments.find(t => t.id === app.state.currentTreatmentId);
-                    const med = treatment?.meds.find(m => m.id === app.state.currentMedId);
-                    if (med) app.renderIndicators(med);
-                }
-            } else {
-                // Intentar migración si Firebase está vacío pero hay local
-                const localData = JSON.parse(localStorage.getItem('zenmeds_treatments'));
-                if (localData) {
-                    app.state.treatments = localData;
-                    app.saveToStorage();
-                }
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
             }
-        });
+            app.state.db = firebase.database();
+
+            const familyId = "familia_default";
+            app.state.db.ref('families/' + familyId).on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    app.state.treatments = data.treatments || [];
+                } else {
+                    // Intento de migración solo si Firebase está vacío
+                    const localData = JSON.parse(localStorage.getItem('zenmeds_treatments'));
+                    if (localData) {
+                        app.state.treatments = localData;
+                        app.saveToStorage();
+                    }
+                }
+                app.renderHome();
+            }, (error) => {
+                alert("Error de conexión con la base de datos: " + error.message);
+            });
+        } catch (e) {
+            console.error('Error Firebase:', e);
+        }
     },
 
     saveToStorage: () => {
+        if (!app.state.db) return console.warn('Base de datos no inicializada');
         const familyId = "familia_default";
         app.state.db.ref('families/' + familyId).set({
             treatments: app.state.treatments,
             lastUpdate: Date.now()
+        }).then(() => {
+            app.renderDashboard();
+        }).catch(err => {
+            alert('No se pudo guardar en la nube: ' + err.message);
         });
-        app.renderDashboard();
     },
 
     showScreen: (screenId) => {
@@ -157,40 +158,43 @@ const app = {
         app.renderTreatments();
     },
 
-    // --- DASHBOARD (LO NUEVO) ---
+    // --- DASHBOARD ---
     getNextDoses: () => {
         const nextDoses = [];
         const now = new Date();
-        const limit = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Próximas 24h
+        const limit = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
         app.state.treatments.forEach(t => {
-            t.meds.forEach(m => {
-                const start = new Date(`${m.startDate}T${m.startTime}`);
-                const end = new Date(`${m.endDate}T23:59:59`);
-                const total = Math.floor(((end - start) / (1000 * 60 * 60)) / m.frequency) + 1;
+            if (t.meds) {
+                t.meds.forEach(m => {
+                    const start = new Date(`${m.startDate}T${m.startTime}`);
+                    const end = new Date(`${m.endDate}T23:59:59`);
+                    const total = Math.floor(((end - start) / (1000 * 60 * 60)) / m.frequency) + 1;
 
-                for (let i = 0; i < total; i++) {
-                    const doseTime = new Date(start.getTime() + (i * m.frequency * 60 * 60 * 1000));
-                    if (doseTime > now && doseTime < limit && !m.dosesTaken.includes(i)) {
-                        nextDoses.push({
-                            treatmentId: t.id,
-                            medId: m.id,
-                            medName: m.name,
-                            dose: m.dose,
-                            time: doseTime,
-                            index: i,
-                            photo: m.photo
-                        });
+                    for (let i = 0; i < total; i++) {
+                        const doseTime = new Date(start.getTime() + (i * m.frequency * 60 * 60 * 1000));
+                        if (doseTime > now && doseTime < limit && !m.dosesTaken.includes(i)) {
+                            nextDoses.push({
+                                treatmentId: t.id,
+                                medId: m.id,
+                                medName: m.name,
+                                dose: m.dose,
+                                time: doseTime,
+                                index: i,
+                                photo: m.photo
+                            });
+                        }
                     }
-                }
-            });
+                });
+            }
         });
 
-        return nextDoses.sort((a, b) => a.time - b.time).slice(0, 4); // Top 4
+        return nextDoses.sort((a, b) => a.time - b.time).slice(0, 4);
     },
 
     renderDashboard: () => {
         const container = document.getElementById('next-doses-container');
+        if (!container) return;
         const next = app.getNextDoses();
 
         if (next.length === 0) {
@@ -218,7 +222,7 @@ const app = {
         if (confirm('¿Confirmar que ya tomaste este medicamento?')) {
             const t = app.state.treatments.find(x => x.id === tId);
             const m = t.meds.find(x => x.id === mId);
-            if (!m.dosesTaken.includes(index)) {
+            if (m && !m.dosesTaken.includes(index)) {
                 m.dosesTaken.push(index);
                 app.saveToStorage();
                 app.renderHome();
@@ -228,23 +232,35 @@ const app = {
 
     // --- TRATAMIENTOS ---
     saveTreatment: () => {
-        const name = document.getElementById('treatment-name').value.trim();
-        const notes = document.getElementById('treatment-notes').value.trim();
+        try {
+            const nameEl = document.getElementById('treatment-name');
+            const notesEl = document.getElementById('treatment-notes');
+            if (!nameEl) return;
 
-        if (!name) return alert('Por favor, ponle un nombre al tratamiento.');
+            const name = nameEl.value.trim();
+            const notes = notesEl.value.trim();
 
-        if (app.state.currentTreatmentId && app.state.isEditingTreatment) {
-            const t = app.state.treatments.find(t => t.id === app.state.currentTreatmentId);
-            t.name = name;
-            t.notes = notes;
-            app.state.isEditingTreatment = false;
-        } else {
-            const newTreatment = { id: Date.now(), name, notes, meds: [] };
-            app.state.treatments.push(newTreatment);
+            if (!name) return alert('Por favor, ponle un nombre al tratamiento.');
+
+            if (app.state.currentTreatmentId && app.state.isEditingTreatment) {
+                const t = app.state.treatments.find(t => t.id === app.state.currentTreatmentId);
+                if (t) {
+                    t.name = name;
+                    t.notes = notes;
+                }
+                app.state.isEditingTreatment = false;
+            } else {
+                const newTreatment = { id: Date.now(), name, notes, meds: [] };
+                app.state.treatments.push(newTreatment);
+            }
+
+            app.saveToStorage();
+            app.showScreen('screen-home');
+            nameEl.value = '';
+            notesEl.value = '';
+        } catch (e) {
+            alert('Error al guardar tratamiento: ' + e.message);
         }
-
-        app.saveToStorage();
-        app.showScreen('screen-home');
     },
 
     renderTreatments: () => {
